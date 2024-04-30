@@ -1,24 +1,27 @@
 import React, { useEffect, useState } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
+import { Image, Switch, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import * as ExpoImagePicker from 'expo-image-picker'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
+import * as yup from 'yup'
+import DropDownPicker from 'react-native-dropdown-picker'
+import { getProductCategories, update, getDetail } from '../../api/ProductEndpoints'
 import InputItem from '../../components/InputItem'
 import TextRegular from '../../components/TextRegular'
 import * as GlobalStyles from '../../styles/GlobalStyles'
-import defaultProductImage from '../../../assets/product.jpeg'
-import { getProductCategories, create } from '../../api/ProductEndpoints'
 import { showMessage } from 'react-native-flash-message'
-import DropDownPicker from 'react-native-dropdown-picker'
-import * as yup from 'yup'
 import { ErrorMessage, Formik } from 'formik'
 import TextError from '../../components/TextError'
+import { buildInitialValues } from '../Helper'
+import { prepareEntityImages } from '../../api/helpers/FileUploadHelper'
+import defaultProductImage from '../../../assets/product.jpeg'
 
-export default function CreateProductScreen ({ navigation, route }) {
+export default function EditProductScreen ({ navigation, route }) {
   const [open, setOpen] = useState(false)
   const [productCategories, setProductCategories] = useState([])
   const [backendErrors, setBackendErrors] = useState()
+  const [product, setProduct] = useState({})
+  const [initialProductValues, setInitialProductValues] = useState({ name: null, description: null, price: null, order: null, availability: null, image: null, productCategoryId: null })
 
-  const initialProductValues = { name: null, description: null, price: null, order: null, restaurantId: route.params.id, productCategoryId: null, availability: true }
   const validationSchema = yup.object().shape({
     name: yup
       .string()
@@ -65,6 +68,43 @@ export default function CreateProductScreen ({ navigation, route }) {
     fetchProductCategories()
   }, [])
 
+  useEffect(() => {
+    async function fetchProductDetail () {
+      try {
+        const fectchedProduct = await getDetail(route.params.id)
+        const preparedProduct = prepareEntityImages(fectchedProduct, ['image'])
+        setProduct(preparedProduct)
+        const initialValues = buildInitialValues(preparedProduct, initialProductValues)
+        setInitialProductValues(initialValues)
+      } catch (error) {
+        showMessage({
+          message: `There was an error while retrieving product details (id ${route.params.id}). ${error}`,
+          type: 'error',
+          style: GlobalStyles.flashStyle,
+          titleStyle: GlobalStyles.flashTextStyle
+        })
+      }
+    }
+    fetchProductDetail()
+  }, [route])
+
+  const updateProduct = async (values) => {
+    setBackendErrors([])
+    try {
+      const updatedProduct = await update(product.id, values)
+      showMessage({
+        message: `Product ${updatedProduct.name} succesfully updated`,
+        type: 'success',
+        style: GlobalStyles.flashStyle,
+        titleStyle: GlobalStyles.flashTextStyle
+      })
+      navigation.navigate('RestaurantDetailScreen', { id: product.restaurantId, dirty: true })
+    } catch (error) {
+      console.log(error)
+      setBackendErrors(error.errors)
+    }
+  }
+
   const pickImage = async (onSuccess) => {
     const result = await ExpoImagePicker.launchImageLibraryAsync({
       mediaTypes: ExpoImagePicker.MediaTypeOptions.Images,
@@ -79,27 +119,12 @@ export default function CreateProductScreen ({ navigation, route }) {
     }
   }
 
-  const createProduct = async (values) => {
-    setBackendErrors([])
-    try {
-      const createdProduct = await create(values)
-      showMessage({
-        message: `Product ${createdProduct.name} succesfully created`,
-        type: 'success',
-        style: GlobalStyles.flashStyle,
-        titleStyle: GlobalStyles.flashTextStyle
-      })
-      navigation.navigate('RestaurantDetailScreen', { id: route.params.id, dirty: true })
-    } catch (error) {
-      console.log(error)
-      setBackendErrors(error.errors)
-    }
-  }
   return (
     <Formik
       validationSchema={validationSchema}
+      enableReinitialize
       initialValues={initialProductValues}
-      onSubmit={createProduct}>
+      onSubmit={updateProduct}>
       {({ handleSubmit, setFieldValue, values }) => (
         <ScrollView>
           <View style={{ alignItems: 'center' }}>
